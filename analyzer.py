@@ -66,6 +66,40 @@ def analyze_match(team1: str, team2: str, match_time: str, with_lineups: bool = 
     return result or "לא ניתן היה לנתח את המשחק כרגע."
 
 
+def get_todays_matches() -> list:
+    """מחזיר רשימת משחקים של היום עם זמנים מדויקים"""
+    from datetime import datetime
+    today = datetime.now().strftime("%d/%m/%Y")
+
+    prompt = f"""מה המשחקים במונדיאל 2026 בתאריך {today}?
+חפש באינטרנט ותחזיר רשימה של משחקים בפורמט הבא בלבד (JSON):
+[{{"team1": "שם קבוצה 1", "team2": "שם קבוצה 2", "time": "HH:MM"}}]
+אם אין משחקים, החזר רשימה ריקה: []
+החזר JSON בלבד, ללא טקסט נוסף."""
+
+    try:
+        response = client.beta.messages.create(
+            model="claude-opus-4-5",
+            max_tokens=500,
+            messages=[{"role": "user", "content": prompt}],
+            tools=[WEB_SEARCH_TOOL],
+            betas=["web-search-2025-03-05"],
+        )
+
+        import json
+        for block in response.content:
+            if hasattr(block, "text"):
+                text = block.text.strip()
+                if "[" in text:
+                    start = text.index("[")
+                    end = text.rindex("]") + 1
+                    return json.loads(text[start:end])
+    except Exception as e:
+        pass
+
+    return []
+
+
 def analyze_daily_matches(matches: list) -> str:
     matches_text = "\n".join([f"- {m['team1']} נגד {m['team2']} בשעה {m['time']}" for m in matches])
 
