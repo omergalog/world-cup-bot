@@ -108,14 +108,22 @@ def morning_briefing():
     result = analyze_daily_matches(matches)
     send_message(result)
 
+def get_latest_offset():
+    """קבל את ה-offset האחרון כדי לדלג על הודעות ישנות"""
+    updates = get_updates()
+    if updates:
+        return updates[-1]["update_id"] + 1
+    return None
+
 def main():
     logger.info("🚀 בוט מונדיאל 2026 מתחיל...")
-    send_message("🚀 *בוט מונדיאל 2026 עלה לאוויר ופועל 24/7!*")
 
     # ניתוח בוקר בשעה 09:00
     schedule.every().day.at("09:00").do(morning_briefing)
 
-    offset = None
+    # דלג על הודעות ישנות
+    offset = get_latest_offset()
+    logger.info(f"מתחיל מ-offset: {offset}")
     last_schedule_check = time.time()
 
     while True:
