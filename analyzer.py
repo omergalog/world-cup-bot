@@ -39,27 +39,28 @@ WEB_SEARCH_TOOL = {
 def analyze_match(team1: str, team2: str, match_time: str, with_lineups: bool = False) -> str:
     lineup_note = "הרכבים הרשמיים פורסמו - עדכן את הניתוח בהתאם." if with_lineups else "זהו ניתוח ראשוני לפני פרסום הרכבים הרשמיים."
 
-    prompt = f"""חפש באינטרנט מידע על המשחק: {team1} נגד {team2} | {match_time}
+    prompt = f"""חפש באינטרנט מידע על: {team1} vs {team2} ({match_time}).
 {lineup_note}
+אסוף: xG, שערים, פצועים, H2H, דירוג FIFA.
 
-אסוף מידע על: שערים, xG, פצועים, H2H, דירוג FIFA.
-
-לאחר שאספת את כל המידע, כתוב רק את זה - לא יותר:
+לאחר החיפוש, כתוב את הפלט הבא בדיוק - לא יותר ולא פחות:
 
 🏆 {team1} 🆚 {team2}
 📅 {match_time}
 
-• [משפט 1 - קצר]
-• [משפט 2 - קצר]
-• [משפט 3 - קצר]
-• [משפט 4 - קצר]
-• [משפט 5 - קצר]
+• [עובדה 1]
+• [עובדה 2]
+• [עובדה 3]
+• [עובדה 4]
+• [עובדה 5]
 
-🎯 {team1} [X] - [Y] {team2}"""
+🎯 {team1} X - Y {team2}
+
+חובה: החלף את X ו-Y במספרים אמיתיים. זהו הפלט המלא - אל תוסיף שום דבר אחר."""
 
     response = client.beta.messages.create(
         model="claude-opus-4-5",
-        max_tokens=600,
+        max_tokens=2000,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}],
         tools=[WEB_SEARCH_TOOL],
@@ -70,6 +71,10 @@ def analyze_match(team1: str, team2: str, match_time: str, with_lineups: bool = 
     for block in response.content:
         if hasattr(block, "text"):
             result += block.text
+
+    # אם הניתוח לא מכיל תחזית, הוסף הודעת שגיאה
+    if "🎯" not in result:
+        result += f"\n\n🎯 לא ניתן היה לחזות את תוצאת {team1} - {team2}"
 
     return result or "לא ניתן היה לנתח את המשחק כרגע."
 
