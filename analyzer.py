@@ -39,23 +39,20 @@ WEB_SEARCH_TOOL = {
 def analyze_match(team1: str, team2: str, match_time: str, with_lineups: bool = False) -> str:
     lineup_note = "הרכבים הרשמיים פורסמו - עדכן את הניתוח בהתאם." if with_lineups else "זהו ניתוח ראשוני לפני פרסום הרכבים הרשמיים."
 
-    prompt = f"""נתח את המשחק הבא במונדיאל 2026:
-{team1} נגד {team2}
-זמן המשחק: {match_time}
-
+    prompt = f"""נתח את המשחק: {team1} נגד {team2} | {match_time}
 {lineup_note}
 
-חפש באינטרנט ותספק:
-1. מצב שחקנים ופצועים עכשווי
-2. 5 המשחקים האחרונים של כל קבוצה
-3. היסטוריית עימותים ישירים
-4. הרכב משוער/רשמי
-5. גורמים טקטיים מרכזיים
-6. תחזית תוצאה מדויקת עם הסבר 5 משפטים בעברית"""
+חפש באינטרנט מידע עדכני וספק ניתוח קצר וממוקד:
+- מצב שחקנים ופצועים מרכזיים
+- מומנטום אחרון (3 משחקים)
+- יתרון טקטי מרכזי
+
+לבסוף - 5 משפטי הסבר קצרים בעברית וחובה לסיים עם:
+🎯 תחזית סופית: X:Y"""
 
     response = client.beta.messages.create(
         model="claude-opus-4-5",
-        max_tokens=1024,
+        max_tokens=800,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}],
         tools=[WEB_SEARCH_TOOL],
