@@ -1,0 +1,95 @@
+import anthropic
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+SYSTEM_PROMPT = """אתה סוכן הימורים מקצועי המתמחה בניתוח משחקי כדורגל במונדיאל 2026.
+תפקידך לנתח כל משחק ולחזות את התוצאה המדויקת (למשל 2:1, 0:0).
+
+כללי הניתוח שלך:
+1. חפש תמיד מידע עדכני על שתי הקבוצות לפני הניתוח
+2. בדוק: מצב שחקנים ופצועים, הרכב אחרון, 5 משחקים אחרונים, היסטוריית עימותים
+3. שקול: xG (שערים צפויים), כושר בית/חוץ, עייפות, לחץ טקטי
+4. תמיד ספק תחזית תוצאה מדויקת (סקור מלא)
+5. הסבר את התחזית ב-5 משפטים בעברית בלבד
+
+פורמט ההודעה (RTL, עברית):
+🏆 **[שם קבוצה א'] 🆚 [שם קבוצה ב']**
+📅 [תאריך ושעה]
+🎯 **תחזית: [X:Y לטובת קבוצה / תיקו]**
+
+[5 משפטי הסבר בעברית]
+
+⚠️ *ניתוח ראשוני / ניתוח מעודכן לאחר הרכבים*"""
+
+
+def analyze_match(team1: str, team2: str, match_time: str, with_lineups: bool = False) -> str:
+    lineup_note = "הרכבים הרשמיים פורסמו - עדכן את הניתוח בהתאם." if with_lineups else "זהו ניתוח ראשוני לפני פרסום הרכבים הרשמיים."
+
+    prompt = f"""נתח את המשחק הבא במונדיאל 2026:
+{team1} נגד {team2}
+זמן המשחק: {match_time}
+
+{lineup_note}
+
+בצע חיפוש מקיף ועדכני על שתי הקבוצות ותספק:
+1. מצב שחקנים ופצועים עכשווי
+2. 5 המשחקים האחרונים של כל קבוצה
+3. היסטוריית עימותים ישירים
+4. הרכב משוער/רשמי
+5. גורמים טקטיים מרכזיים
+6. תחזית תוצאה מדויקת עם הסבר 5 משפטים"""
+
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=1024,
+        system=SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": prompt}],
+        tools=[{
+            "type": "web_search_20250305",
+            "name": "web_search",
+            "max_uses": 5
+        }],
+        betas=["web-search-2025-03-05"],
+    )
+
+    result = ""
+    for block in response.content:
+        if hasattr(block, "text"):
+            result += block.text
+
+    return result
+
+
+def analyze_daily_matches(matches: list) -> str:
+    matches_text = "\n".join([f"- {m['team1']} נגד {m['team2']} בשעה {m['time']}" for m in matches])
+
+    prompt = f"""אלו המשחקים של היום במונדיאל 2026:
+{matches_text}
+
+לכל משחק, בצע ניתוח מקיף וספק תחזית תוצאה מדויקת.
+חפש מידע עדכני על כל הקבוצות.
+הצג כל משחק בפורמט הנכון עם דגל הנבחרות."""
+
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=4096,
+        system=SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": prompt}],
+        tools=[{
+            "type": "web_search_20250305",
+            "name": "web_search",
+            "max_uses": 10
+        }],
+        betas=["web-search-2025-03-05"],
+    )
+
+    result = ""
+    for block in response.content:
+        if hasattr(block, "text"):
+            result += block.text
+
+    return result
