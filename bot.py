@@ -1,137 +1,141 @@
-import asyncio
 import os
+import time
+import requests
+import schedule
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
-from telegram import Bot
-from telegram.ext import Application, CommandHandler, ContextTypes
-from telegram import Update
-from analyzer import analyze_match, analyze_daily_matches
+from analyzer import analyze_daily_matches, analyze_match
 
 load_dotenv()
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-CHAT_ID = int(os.getenv("TELEGRAM_CHAT_ID"))
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
+def send_message(text):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": text,
+        "parse_mode": "Markdown"
+    }
+    try:
+        r = requests.post(url, json=payload, timeout=30)
+        if r.ok:
+            logger.info("הודעה נשלחה בהצלחה")
+        else:
+            logger.error(f"שגיאה בשליחה: {r.text}")
+    except Exception as e:
+        logger.error(f"שגיאה: {e}")
 
-async def send_message(bot: Bot, text: str):
-    await bot.send_message(
-        chat_id=CHAT_ID,
-        text=text,
-        parse_mode="Markdown"
-    )
+def get_updates(offset=None):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
+    params = {"timeout": 30, "allowed_updates": ["message"]}
+    if offset:
+        params["offset"] = offset
+    try:
+        r = requests.get(url, params=params, timeout=35)
+        return r.json().get("result", [])
+    except:
+        return []
 
+def handle_command(text, chat_id):
+    text = text.strip().lower()
 
-async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "🏆 *בוט ניתוח מונדיאל 2026 מוכן!*\n\n"
-        "פקודות זמינות:\n"
-        "/analyze [קבוצה1] vs [קבוצה2] [שעה] - ניתוח משחק ספציפי\n"
-        "/today - ניתוח כל משחקי היום\n"
-        "/tomorrow - ניתוח משחקי מחר\n"
-        "/lineups [קבוצה1] vs [קבוצה2] - עדכון אחרי פרסום הרכבים",
-        parse_mode="Markdown"
-    )
+    if text == "/start":
+        send_message(
+            "🏆 *בוט הימורי מונדיאל 2026 מוכן!*\n\n"
+            "פקודות זמינות:\n"
+            "*/today* - ניתוח משחקי היום\n"
+            "*/tomorrow* - ניתוח משחקי מחר\n"
+            "*/analyze ברזיל vs ארגנטינה 22:00* - ניתוח משחק ספציפי\n"
+            "*/lineups ברזיל vs ארגנטינה* - עדכון אחרי הרכבים"
+        )
 
+    elif text == "/today":
+        send_message("🔍 מנתח משחקי היום... זה יקח כדקה")
+        today = datetime.now().strftime("%d/%m/%Y")
+        matches = [{"team1": "משחקי היום", "team2": today, "time": today}]
+        result = analyze_daily_matches(matches)
+        send_message(result)
 
-async def cmd_analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    args = " ".join(context.args)
-    if "vs" not in args.lower():
-        await update.message.reply_text("שימוש: /analyze ברזיל vs ארגנטינה 22:00")
-        return
+    elif text == "/tomorrow":
+        send_message("🔍 מנתח משחקי מחר...")
+        tomorrow = (datetime.now() + timedelta(days=1)).strftime("%d/%m/%Y")
+        matches = [{"team1": "משחקי מחר", "team2": tomorrow, "time": tomorrow}]
+        result = analyze_daily_matches(matches)
+        send_message(result)
 
-    parts = args.split("vs", 1)
-    team1 = parts[0].strip()
-    rest = parts[1].strip().split()
-    team2 = rest[0] if rest else ""
-    time = rest[1] if len(rest) > 1 else "לא צוין"
+    elif text.startswith("/analyze "):
+        args = text[9:].strip()
+        if "vs" in args:
+            parts = args.split("vs", 1)
+            team1 = parts[0].strip()
+            rest = parts[1].strip().split()
+            team2 = rest[0] if rest else ""
+            match_time = rest[1] if len(rest) > 1 else "לא צוין"
+            send_message(f"🔍 מנתח: {team1} נגד {team2}...")
+            result = analyze_match(team1, team2, match_time)
+            send_message(result)
 
-    await update.message.reply_text(f"🔍 מנתח: {team1} נגד {team2}...\nזה יקח כ-30 שניות")
+    elif text.startswith("/lineups "):
+        args = text[9:].strip()
+        if "vs" in args:
+            parts = args.split("vs", 1)
+            team1 = parts[0].strip()
+            team2 = parts[1].strip()
+            send_message(f"🔄 מעדכן עם הרכבים רשמיים: {team1} נגד {team2}...")
+            result = analyze_match(team1, team2, "כפי שנקבע", with_lineups=True)
+            send_message(result)
 
-    result = analyze_match(team1, team2, time)
-    await send_message(context.bot, result)
-
-
-async def cmd_lineups(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    args = " ".join(context.args)
-    if "vs" not in args.lower():
-        await update.message.reply_text("שימוש: /lineups ברזיל vs ארגנטינה")
-        return
-
-    parts = args.split("vs", 1)
-    team1 = parts[0].strip()
-    team2 = parts[1].strip()
-
-    await update.message.reply_text(f"🔄 מעדכן ניתוח עם הרכבים רשמיים:\n{team1} נגד {team2}")
-
-    result = analyze_match(team1, team2, "כפי שנקבע", with_lineups=True)
-    await send_message(context.bot, result)
-
-
-async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔍 מחפש משחקי היום ומנתח... זה יקח כדקה")
-
-    today = datetime.now().strftime("%d/%m/%Y")
-    matches = [{"team1": "לפי לוח המשחקים", "team2": "של היום", "time": today}]
-
-    result = analyze_daily_matches(matches)
-    await send_message(context.bot, result)
-
-
-async def cmd_tomorrow(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔍 מנתח משחקי מחר...")
-
-    from datetime import timedelta
-    tomorrow = (datetime.now() + timedelta(days=1)).strftime("%d/%m/%Y")
-    matches = [{"team1": "לפי לוח המשחקים", "team2": "של מחר", "time": tomorrow}]
-
-    result = analyze_daily_matches(matches)
-    await send_message(context.bot, result)
-
-
-async def morning_briefing(context: ContextTypes.DEFAULT_TYPE):
+def morning_briefing():
     logger.info("שולח ניתוח בוקר...")
-    from datetime import timedelta
     today = datetime.now().strftime("%d/%m/%Y")
     tomorrow = (datetime.now() + timedelta(days=1)).strftime("%d/%m/%Y")
 
-    intro = (
-        "☀️ *בוקר טוב! ניתוח מונדיאל יומי*\n"
+    send_message(
+        f"☀️ *בוקר טוב! ניתוח מונדיאל יומי*\n"
         f"📅 {today}\n\n"
-        "מחפש ומנתח את כל המשחקים של היום ומחר..."
+        "מחפש ומנתח את כל המשחקים..."
     )
-    await context.bot.send_message(chat_id=CHAT_ID, text=intro, parse_mode="Markdown")
 
     matches = [
-        {"team1": "משחקי היום", "team2": f"{today}", "time": today},
-        {"team1": "משחקי מחר", "team2": f"{tomorrow}", "time": tomorrow},
+        {"team1": "משחקי היום ומחר", "team2": f"{today} + {tomorrow}", "time": today}
     ]
     result = analyze_daily_matches(matches)
-    await send_message(context.bot, result)
-
+    send_message(result)
 
 def main():
-    app = Application.builder().token(BOT_TOKEN).build()
+    logger.info("🚀 בוט מונדיאל 2026 מתחיל...")
+    send_message("🚀 *בוט מונדיאל 2026 עלה לאוויר ופועל 24/7!*")
 
-    app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(CommandHandler("analyze", cmd_analyze))
-    app.add_handler(CommandHandler("lineups", cmd_lineups))
-    app.add_handler(CommandHandler("today", cmd_today))
-    app.add_handler(CommandHandler("tomorrow", cmd_tomorrow))
+    # ניתוח בוקר בשעה 09:00
+    schedule.every().day.at("09:00").do(morning_briefing)
 
-    # ניתוח בוקר בשעה 08:00 כל יום
-    app.job_queue.run_daily(
-        morning_briefing,
-        time=datetime.strptime("08:00", "%H:%M").time(),
-        name="morning_briefing"
-    )
+    offset = None
+    last_schedule_check = time.time()
 
-    logger.info("🚀 הבוט פועל!")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    while True:
+        # בדיקת הודעות נכנסות
+        updates = get_updates(offset)
+        for update in updates:
+            offset = update["update_id"] + 1
+            message = update.get("message", {})
+            text = message.get("text", "")
+            chat_id = message.get("chat", {}).get("id")
+            if text and chat_id:
+                logger.info(f"פקודה: {text}")
+                handle_command(text, chat_id)
 
+        # בדיקת משימות מתוזמנות כל דקה
+        if time.time() - last_schedule_check >= 60:
+            schedule.run_pending()
+            last_schedule_check = time.time()
+
+        time.sleep(2)
 
 if __name__ == "__main__":
     main()
