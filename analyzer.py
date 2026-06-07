@@ -54,7 +54,9 @@ def analyze_match(team1: str, team2: str, match_time: str, with_lineups: bool = 
 • [עובדה 4]
 • [עובדה 5]
 
-🎯 {team1} X - Y {team2}
+🎯 תחזית סופית:
+{team1} - X
+{team2} - Y
 
 חובה: החלף את X ו-Y במספרים אמיתיים. זהו הפלט המלא - אל תוסיף שום דבר אחר."""
 
