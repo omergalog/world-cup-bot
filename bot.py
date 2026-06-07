@@ -77,6 +77,18 @@ def handle_command(text, chat_id):
         result = analyze_daily_matches(matches)
         send_message(result)
 
+    elif text.startswith("/lineups "):
+        args = text[9:].strip()
+        if "vs" in args:
+            parts = args.split("vs", 1)
+            team1 = parts[0].strip()
+            rest = parts[1].strip().split()
+            team2 = rest[0] if rest else ""
+            match_time = rest[1] if len(rest) > 1 else "לא צוין"
+            send_message(f"🔄 מנתח עם הרכבים: {team1} נגד {team2}...")
+            result = analyze_match(team1, team2, match_time, with_lineups=True)
+            send_message(result)
+
     elif text.startswith("/analyze "):
         args = text[9:].strip()
         if "vs" in args:
