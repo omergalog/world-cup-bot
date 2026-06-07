@@ -10,7 +10,7 @@ SYSTEM_PROMPT = """אתה סוכן הימורים מקצועי המתמחה בנ
 תפקידך לנתח כל משחק ולחזות את התוצאה המדויקת (למשל 2:1, 0:0).
 
 כללי הניתוח שלך:
-1. השתמש בידע שלך על הנבחרות, השחקנים, והסטטיסטיקות העדכניות
+1. חפש באינטרנט מידע עדכני על שתי הקבוצות לפני הניתוח
 2. בדוק: מצב שחקנים ופצועים, הרכב אחרון, 5 משחקים אחרונים, היסטוריית עימותים
 3. שקול: xG (שערים צפויים), כושר בית/חוץ, עייפות, לחץ טקטי
 4. תמיד ספק תחזית תוצאה מדויקת (סקור מלא)
@@ -25,6 +25,12 @@ SYSTEM_PROMPT = """אתה סוכן הימורים מקצועי המתמחה בנ
 
 ⚠️ ניתוח ראשוני / ניתוח מעודכן לאחר הרכבים"""
 
+WEB_SEARCH_TOOL = {
+    "type": "web_search_20250305",
+    "name": "web_search",
+    "max_uses": 5
+}
+
 
 def analyze_match(team1: str, team2: str, match_time: str, with_lineups: bool = False) -> str:
     lineup_note = "הרכבים הרשמיים פורסמו - עדכן את הניתוח בהתאם." if with_lineups else "זהו ניתוח ראשוני לפני פרסום הרכבים הרשמיים."
@@ -35,22 +41,29 @@ def analyze_match(team1: str, team2: str, match_time: str, with_lineups: bool = 
 
 {lineup_note}
 
-ספק ניתוח מקיף הכולל:
-1. מצב שחקנים ופצועים ידוע
+חפש באינטרנט ותספק:
+1. מצב שחקנים ופצועים עכשווי
 2. 5 המשחקים האחרונים של כל קבוצה
 3. היסטוריית עימותים ישירים
 4. הרכב משוער/רשמי
 5. גורמים טקטיים מרכזיים
 6. תחזית תוצאה מדויקת עם הסבר 5 משפטים בעברית"""
 
-    response = client.messages.create(
+    response = client.beta.messages.create(
         model="claude-opus-4-5",
         max_tokens=1024,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}],
+        tools=[WEB_SEARCH_TOOL],
+        betas=["web-search-2025-03-05"],
     )
 
-    return response.content[0].text
+    result = ""
+    for block in response.content:
+        if hasattr(block, "text"):
+            result += block.text
+
+    return result or "לא ניתן היה לנתח את המשחק כרגע."
 
 
 def analyze_daily_matches(matches: list) -> str:
@@ -59,16 +72,23 @@ def analyze_daily_matches(matches: list) -> str:
     prompt = f"""אלו המשחקים של היום/מחר במונדיאל 2026:
 {matches_text}
 
+חפש באינטרנט את לוח המשחקים הרשמי של מונדיאל 2026 ואת המשחקים בתאריכים אלה.
 לכל משחק, בצע ניתוח מקיף וספק תחזית תוצאה מדויקת.
-השתמש בידע שלך על הנבחרות.
 הצג כל משחק בפורמט הנכון עם דגל הנבחרות.
-אם אין משחקים ביום זה, ציין זאת בצורה ברורה."""
+אם אין משחקים ביום זה, ציין מתי המשחק הבא."""
 
-    response = client.messages.create(
+    response = client.beta.messages.create(
         model="claude-opus-4-5",
         max_tokens=4096,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}],
+        tools=[{**WEB_SEARCH_TOOL, "max_uses": 8}],
+        betas=["web-search-2025-03-05"],
     )
 
-    return response.content[0].text
+    result = ""
+    for block in response.content:
+        if hasattr(block, "text"):
+            result += block.text
+
+    return result or "לא ניתן היה לנתח את המשחקים כרגע."
