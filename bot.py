@@ -177,8 +177,8 @@ def get_latest_offset():
 def main():
     logger.info("🚀 בוט מונדיאל 2026 מתחיל...")
 
-    # ניתוח בוקר בשעה 09:00
-    schedule.every().day.at("09:00").do(morning_briefing)
+    # ניתוח בוקר בשעה 09:00 שעון ישראל (07:00 UTC)
+    schedule.every().day.at("07:00").do(morning_briefing)
 
     # בדיקת הרכבים כל 5 דקות
     schedule.every(5).minutes.do(check_lineup_alerts)
