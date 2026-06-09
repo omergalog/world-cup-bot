@@ -61,7 +61,7 @@ Y - {team2}
 חובה: החלף את X ו-Y במספרים אמיתיים. זהו הפלט המלא - אל תוסיף שום דבר אחר."""
 
     response = client.beta.messages.create(
-        model="claude-sonnet-4-6",
+        model="claude-opus-4-8",
         max_tokens=2000,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}],
@@ -94,7 +94,7 @@ def get_todays_matches() -> list:
 
     try:
         response = client.beta.messages.create(
-            model="claude-sonnet-4-6",
+            model="claude-opus-4-8",
             max_tokens=500,
             messages=[{"role": "user", "content": prompt}],
             tools=[WEB_SEARCH_TOOL],
@@ -128,7 +128,7 @@ def analyze_daily_matches(matches: list) -> str:
 אם אין משחקים ביום זה, ציין מתי המשחק הבא במונדיאל."""
 
     response = client.beta.messages.create(
-        model="claude-sonnet-4-6",
+        model="claude-opus-4-8",
         max_tokens=4096,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}],
