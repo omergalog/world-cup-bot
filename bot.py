@@ -4,10 +4,19 @@ import requests
 import schedule
 import logging
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 from analyzer import analyze_daily_matches, analyze_match, get_todays_matches
 
 load_dotenv()
+
+# שעון ישראל אחיד לכל הבוט (השרת רץ ב-UTC)
+IL_TZ = ZoneInfo("Asia/Jerusalem")
+
+
+def now_il():
+    """הזמן הנוכחי בשעון ישראל"""
+    return datetime.now(IL_TZ)
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -59,20 +68,20 @@ def handle_command(text, chat_id):
             "*/today* - ניתוח משחקי היום\n"
             "*/tomorrow* - ניתוח משחקי מחר\n"
             "*/analyze ברזיל vs ארגנטינה 22:00* - ניתוח משחק ספציפי\n\n"
-            "🤖 כל בוקר בשעה 09:00 תקבל ניתוח אוטומטי\n"
+            "🤖 כל בוקר בשעה 10:00 תקבל ניתוח אוטומטי\n"
             "🔄 חצי שעה לפני כל משחק תקבל ניתוח מעודכן עם ההרכבים"
         )
 
     elif text == "/today":
         send_message("🔍 מנתח משחקי היום... זה יקח כדקה")
-        today = datetime.now().strftime("%d/%m/%Y")
+        today = now_il().strftime("%d/%m/%Y")
         matches = [{"team1": "משחקי היום", "team2": today, "time": today}]
         result = analyze_daily_matches(matches)
         send_message(result)
 
     elif text == "/tomorrow":
         send_message("🔍 מנתח משחקי מחר...")
-        tomorrow = (datetime.now() + timedelta(days=1)).strftime("%d/%m/%Y")
+        tomorrow = (now_il() + timedelta(days=1)).strftime("%d/%m/%Y")
         matches = [{"team1": "משחקי מחר", "team2": tomorrow, "time": tomorrow}]
         result = analyze_daily_matches(matches)
         send_message(result)
@@ -107,8 +116,8 @@ def morning_briefing():
     lineup_alerts_sent = set()  # איפוס התראות הרכבים ליום חדש
 
     logger.info("שולח ניתוח בוקר...")
-    today = datetime.now().strftime("%d/%m/%Y")
-    tomorrow = (datetime.now() + timedelta(days=1)).strftime("%d/%m/%Y")
+    today = now_il().strftime("%d/%m/%Y")
+    tomorrow = (now_il() + timedelta(days=1)).strftime("%d/%m/%Y")
 
     send_message(
         f"☀️ *בוקר טוב! ניתוח מונדיאל יומי*\n"
@@ -120,16 +129,17 @@ def morning_briefing():
     result = analyze_daily_matches(matches)
     send_message(result)
 
-    # עדכן את רשימת משחקי היום לצורך התראות הרכבים
-    todays_matches = get_todays_matches()
-    logger.info(f"נמצאו {len(todays_matches)} משחקים להיום")
+    # עדכן את רשימת המשחקים לצורך התראות הרכבים — היום + מחר
+    # (כדי לתפוס גם משחקי לילה אחרי חצות שמתחילים לפנות בוקר בשעון ישראל)
+    todays_matches = get_todays_matches(today) + get_todays_matches(tomorrow)
+    logger.info(f"נמצאו {len(todays_matches)} משחקים (היום + מחר)")
 
 
 def check_lineup_alerts():
     """בדוק אם צריך לשלוח ניתוח מעודכן עם הרכבים (חצי שעה לפני כל משחק)"""
     global lineup_alerts_sent
 
-    now = datetime.now()
+    now = now_il()
 
     for match in todays_matches:
         match_id = f"{match['team1']}_vs_{match['team2']}"
@@ -138,9 +148,11 @@ def check_lineup_alerts():
             continue
 
         try:
-            match_time = datetime.strptime(match['time'], "%H:%M").replace(
-                year=now.year, month=now.month, day=now.day
-            )
+            # בנה את מועד המשחק המלא (תאריך + שעה) בשעון ישראל
+            match_date = match.get('date') or now.strftime("%d/%m/%Y")
+            match_time = datetime.strptime(
+                f"{match_date} {match['time']}", "%d/%m/%Y %H:%M"
+            ).replace(tzinfo=IL_TZ)
             time_until = (match_time - now).total_seconds() / 60  # בדקות
 
             # שלח 30 דקות לפני המשחק
@@ -177,7 +189,7 @@ def get_latest_offset():
 def main():
     logger.info("🚀 בוט מונדיאל 2026 מתחיל...")
 
-    # ניתוח בוקר בשעה 09:00 שעון ישראל (07:00 UTC)
+    # ניתוח בוקר בשעה 10:00 שעון ישראל (07:00 UTC, השרת ב-UTC + ישראל בשעון קיץ = UTC+3)
     schedule.every().day.at("07:00").do(morning_briefing)
 
     # בדיקת הרכבים כל 5 דקות

@@ -81,15 +81,19 @@ Y - {team2}
     return result or "לא ניתן היה לנתח את המשחק כרגע."
 
 
-def get_todays_matches() -> list:
-    """מחזיר רשימת משחקים של היום עם זמנים מדויקים"""
+def get_todays_matches(date_str: str = None) -> list:
+    """מחזיר רשימת משחקים של תאריך נתון (ברירת מחדל: היום בשעון ישראל) עם זמנים מדויקים"""
     from datetime import datetime
-    today = datetime.now().strftime("%d/%m/%Y")
+    from zoneinfo import ZoneInfo
+    if date_str is None:
+        date_str = datetime.now(ZoneInfo("Asia/Jerusalem")).strftime("%d/%m/%Y")
 
-    prompt = f"""מה משחקי מונדיאל 2026 בתאריך {today}?
+    prompt = f"""מה משחקי מונדיאל 2026 בתאריך {date_str}?
 חפש באינטרנט ותחזיר רשימה של משחקים בפורמט הבא בלבד (JSON):
-[{{"team1": "שם קבוצה 1", "team2": "שם קבוצה 2", "time": "HH:MM"}}]
-השתמש בשעון ישראל (IL). אם אין משחקים, החזר רשימה ריקה: []
+[{{"team1": "שם קבוצה 1", "team2": "שם קבוצה 2", "date": "DD/MM/YYYY", "time": "HH:MM"}}]
+השתמש בשעון ישראל (IL) — חשוב מאוד! משחק שמתחיל אחרי חצות בשעון ישראל שייך לתאריך של היום הבא.
+שדה "date" חייב להיות התאריך המדויק בשעון ישראל שבו המשחק מתחיל.
+אם אין משחקים, החזר רשימה ריקה: []
 החזר JSON בלבד, ללא טקסט נוסף."""
 
     try:
@@ -108,7 +112,12 @@ def get_todays_matches() -> list:
                 if "[" in text:
                     start = text.index("[")
                     end = text.rindex("]") + 1
-                    return json.loads(text[start:end])
+                    matches = json.loads(text[start:end])
+                    # ודא שלכל משחק יש שדה תאריך (ברירת מחדל: התאריך המבוקש)
+                    for m in matches:
+                        if not m.get("date"):
+                            m["date"] = date_str
+                    return matches
     except Exception as e:
         pass
 
