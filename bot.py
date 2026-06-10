@@ -18,6 +18,14 @@ def now_il():
     """הזמן הנוכחי בשעון ישראל"""
     return datetime.now(IL_TZ)
 
+
+def parse_match_dt(match):
+    """מחזיר את מועד המשחק המלא (תאריך + שעה) כאובייקט datetime בשעון ישראל"""
+    match_date = match.get('date') or now_il().strftime("%d/%m/%Y")
+    return datetime.strptime(
+        f"{match_date} {match['time']}", "%d/%m/%Y %H:%M"
+    ).replace(tzinfo=IL_TZ)
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -75,16 +83,22 @@ def handle_command(text, chat_id):
     elif text == "/today":
         send_message("🔍 מנתח משחקי היום... זה יקח כדקה")
         today = now_il().strftime("%d/%m/%Y")
-        matches = [{"team1": "משחקי היום", "team2": today, "time": today}]
-        result = analyze_daily_matches(matches)
-        send_message(result)
+        matches = get_todays_matches(today)
+        if not matches:
+            send_message("אין משחקי מונדיאל היום 🏆")
+        else:
+            result = analyze_daily_matches(matches)
+            send_message(result)
 
     elif text == "/tomorrow":
         send_message("🔍 מנתח משחקי מחר...")
         tomorrow = (now_il() + timedelta(days=1)).strftime("%d/%m/%Y")
-        matches = [{"team1": "משחקי מחר", "team2": tomorrow, "time": tomorrow}]
-        result = analyze_daily_matches(matches)
-        send_message(result)
+        matches = get_todays_matches(tomorrow)
+        if not matches:
+            send_message("אין משחקי מונדיאל מחר 🏆")
+        else:
+            result = analyze_daily_matches(matches)
+            send_message(result)
 
     elif text.startswith("/lineups "):
         args = text[9:].strip()
@@ -116,23 +130,39 @@ def morning_briefing():
     lineup_alerts_sent = set()  # איפוס התראות הרכבים ליום חדש
 
     logger.info("שולח ניתוח בוקר...")
-    today = now_il().strftime("%d/%m/%Y")
-    tomorrow = (now_il() + timedelta(days=1)).strftime("%d/%m/%Y")
+    now = now_il()
+    today = now.strftime("%d/%m/%Y")
+    tomorrow = (now + timedelta(days=1)).strftime("%d/%m/%Y")
+
+    # אסוף משחקי היום + מחר, וסנן רק לחלון 24 השעות הקרובות (היום + הלילה).
+    # כך לא מנתחים פעמיים את משחקי מחר בערב, אבל כן תופסים משחקי לילה אחרי חצות.
+    cutoff = now + timedelta(hours=24)
+    window = []
+    for m in get_todays_matches(today) + get_todays_matches(tomorrow):
+        try:
+            if now <= parse_match_dt(m) <= cutoff:
+                window.append(m)
+        except Exception:
+            pass
+    window.sort(key=parse_match_dt)
+    todays_matches = window  # משמש גם להתראות ההרכבים
+
+    if not window:
+        send_message(
+            f"☀️ *בוקר טוב!*\n📅 {today}\n\n"
+            "אין משחקי מונדיאל ב-24 השעות הקרובות. נתראה במשחק הבא! 🏆"
+        )
+        logger.info("אין משחקים בחלון 24 השעות")
+        return
 
     send_message(
         f"☀️ *בוקר טוב! ניתוח מונדיאל יומי*\n"
         f"📅 {today}\n\n"
-        "מחפש ומנתח את כל המשחקים..."
+        f"מנתח {len(window)} משחקים (היום + הלילה)..."
     )
-
-    matches = [{"team1": "משחקי היום ומחר", "team2": f"{today} + {tomorrow}", "time": today}]
-    result = analyze_daily_matches(matches)
+    result = analyze_daily_matches(window)
     send_message(result)
-
-    # עדכן את רשימת המשחקים לצורך התראות הרכבים — היום + מחר
-    # (כדי לתפוס גם משחקי לילה אחרי חצות שמתחילים לפנות בוקר בשעון ישראל)
-    todays_matches = get_todays_matches(today) + get_todays_matches(tomorrow)
-    logger.info(f"נמצאו {len(todays_matches)} משחקים (היום + מחר)")
+    logger.info(f"נותחו {len(window)} משחקים בחלון 24 השעות")
 
 
 def check_lineup_alerts():
@@ -148,11 +178,7 @@ def check_lineup_alerts():
             continue
 
         try:
-            # בנה את מועד המשחק המלא (תאריך + שעה) בשעון ישראל
-            match_date = match.get('date') or now.strftime("%d/%m/%Y")
-            match_time = datetime.strptime(
-                f"{match_date} {match['time']}", "%d/%m/%Y %H:%M"
-            ).replace(tzinfo=IL_TZ)
+            match_time = parse_match_dt(match)
             time_until = (match_time - now).total_seconds() / 60  # בדקות
 
             # שלח 30 דקות לפני המשחק
