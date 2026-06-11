@@ -81,25 +81,12 @@ Y - {team2}
     return result or "לא ניתן היה לנתח את המשחק כרגע."
 
 
-def get_todays_matches(date_str: str = None) -> list:
-    """מחזיר רשימת משחקים של תאריך נתון (ברירת מחדל: היום בשעון ישראל) עם זמנים מדויקים"""
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
-    if date_str is None:
-        date_str = datetime.now(ZoneInfo("Asia/Jerusalem")).strftime("%d/%m/%Y")
-
-    prompt = f"""מה משחקי מונדיאל 2026 בתאריך {date_str}?
-חפש באינטרנט ותחזיר רשימה של משחקים בפורמט הבא בלבד (JSON):
-[{{"team1": "שם קבוצה 1", "team2": "שם קבוצה 2", "date": "DD/MM/YYYY", "time": "HH:MM"}}]
-השתמש בשעון ישראל (IL) — חשוב מאוד! משחק שמתחיל אחרי חצות בשעון ישראל שייך לתאריך של היום הבא.
-שדה "date" חייב להיות התאריך המדויק בשעון ישראל שבו המשחק מתחיל.
-אם אין משחקים, החזר רשימה ריקה: []
-החזר JSON בלבד, ללא טקסט נוסף."""
-
+def _fetch_matches(prompt: str, default_date: str) -> list:
+    """שולח prompt למודל ומפענח רשימת משחקים בפורמט JSON"""
     try:
         response = client.beta.messages.create(
             model="claude-opus-4-8",
-            max_tokens=500,
+            max_tokens=800,
             messages=[{"role": "user", "content": prompt}],
             tools=[WEB_SEARCH_TOOL],
             betas=["web-search-2025-03-05"],
@@ -113,15 +100,53 @@ def get_todays_matches(date_str: str = None) -> list:
                     start = text.index("[")
                     end = text.rindex("]") + 1
                     matches = json.loads(text[start:end])
-                    # ודא שלכל משחק יש שדה תאריך (ברירת מחדל: התאריך המבוקש)
                     for m in matches:
                         if not m.get("date"):
-                            m["date"] = date_str
+                            m["date"] = default_date
                     return matches
-    except Exception as e:
+    except Exception:
         pass
 
     return []
+
+
+def get_upcoming_matches(hours: int = 24) -> list:
+    """מחזיר את כל משחקי המונדיאל שמתחילים בין עכשיו ל-N השעות הקרובות (שעון ישראל).
+    שואל לפי חלון זמן מפורש כדי לתפוס נכון משחקי לילה שמתחילים אחרי חצות בישראל."""
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    now = datetime.now(ZoneInfo("Asia/Jerusalem"))
+    until = now + timedelta(hours=hours)
+    now_s = now.strftime("%d/%m/%Y %H:%M")
+    until_s = until.strftime("%d/%m/%Y %H:%M")
+
+    prompt = f"""חפש באינטרנט את כל משחקי מונדיאל 2026 שמתחילים בין {now_s} ל-{until_s} בשעון ישראל.
+⚠️ קריטי: משחקים שמתקיימים בארה"ב/קנדה/מקסיקו בערב המקומי מתחילים אחרי חצות בשעון ישראל (01:00-07:00 לפנות בוקר) ושייכים לתאריך הישראלי של היום שאחרי. אל תפספס אותם!
+לדוגמה: משחק ב-22:00 בחוף המזרחי של ארה"ב = 05:00 למחרת בשעון ישראל.
+
+החזר JSON בלבד בפורמט:
+[{{"team1": "שם קבוצה 1", "team2": "שם קבוצה 2", "date": "DD/MM/YYYY", "time": "HH:MM"}}]
+שדה date ו-time חייבים להיות בשעון ישראל המדויק של תחילת המשחק.
+אם אין משחקים בטווח, החזר []. החזר JSON בלבד, ללא טקסט נוסף."""
+
+    return _fetch_matches(prompt, now.strftime("%d/%m/%Y"))
+
+
+def get_todays_matches(date_str: str = None) -> list:
+    """מחזיר רשימת משחקים של תאריך נתון (ברירת מחדל: היום בשעון ישראל)"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    if date_str is None:
+        date_str = datetime.now(ZoneInfo("Asia/Jerusalem")).strftime("%d/%m/%Y")
+
+    prompt = f"""מה משחקי מונדיאל 2026 בתאריך {date_str} בשעון ישראל?
+חפש באינטרנט ותחזיר רשימה של משחקים בפורמט הבא בלבד (JSON):
+[{{"team1": "שם קבוצה 1", "team2": "שם קבוצה 2", "date": "DD/MM/YYYY", "time": "HH:MM"}}]
+השתמש בשעון ישראל (IL) — משחק שמתחיל אחרי חצות בשעון ישראל שייך לתאריך של היום הבא.
+אם אין משחקים, החזר רשימה ריקה: []
+החזר JSON בלבד, ללא טקסט נוסף."""
+
+    return _fetch_matches(prompt, date_str)
 
 
 def analyze_daily_matches(matches: list) -> str:

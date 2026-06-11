@@ -6,7 +6,7 @@ import logging
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
-from analyzer import analyze_daily_matches, analyze_match, get_todays_matches
+from analyzer import analyze_daily_matches, analyze_match, get_todays_matches, get_upcoming_matches
 
 load_dotenv()
 
@@ -132,19 +132,14 @@ def morning_briefing():
     logger.info("שולח ניתוח בוקר...")
     now = now_il()
     today = now.strftime("%d/%m/%Y")
-    tomorrow = (now + timedelta(days=1)).strftime("%d/%m/%Y")
 
-    # אסוף משחקי היום + מחר, וסנן רק לחלון 24 השעות הקרובות (היום + הלילה).
-    # כך לא מנתחים פעמיים את משחקי מחר בערב, אבל כן תופסים משחקי לילה אחרי חצות.
-    cutoff = now + timedelta(hours=24)
-    window = []
-    for m in get_todays_matches(today) + get_todays_matches(tomorrow):
-        try:
-            if now <= parse_match_dt(m) <= cutoff:
-                window.append(m)
-        except Exception:
-            pass
-    window.sort(key=parse_match_dt)
+    # שאל ישירות על חלון 24 השעות הקרובות (כולל משחקי לילה אחרי חצות בשעון ישראל).
+    # שאילתה לפי טווח זמן מונעת בלבול תאריכים של משחקים שמתחילים אחרי חצות.
+    window = get_upcoming_matches(24)
+    try:
+        window.sort(key=parse_match_dt)
+    except Exception:
+        pass
     todays_matches = window  # משמש גם להתראות ההרכבים
 
     if not window:
