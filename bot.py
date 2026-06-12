@@ -10,31 +10,25 @@ from analyzer import analyze_daily_matches, analyze_match, get_todays_matches, g
 
 load_dotenv()
 
-# שעון ישראל אחיד לכל הבוט (השרת רץ ב-UTC)
 IL_TZ = ZoneInfo("Asia/Jerusalem")
 
 
 def now_il():
-    """הזמן הנוכחי בשעון ישראל"""
     return datetime.now(IL_TZ)
 
 
 def parse_match_dt(match):
-    """מחזיר את מועד המשחק המלא (תאריך + שעה) כאובייקט datetime בשעון ישראל"""
     match_date = match.get('date') or now_il().strftime("%d/%m/%Y")
     return datetime.strptime(
         f"{match_date} {match['time']}", "%d/%m/%Y %H:%M"
     ).replace(tzinfo=IL_TZ)
+
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-
-# שמירת משחקי היום עם הזמנים שלהם
-todays_matches = []
-lineup_alerts_sent = set()  # כדי לא לשלוח פעמיים
 
 
 def send_message(text):
@@ -76,8 +70,7 @@ def handle_command(text, chat_id):
             "*/today* - ניתוח משחקי היום\n"
             "*/tomorrow* - ניתוח משחקי מחר\n"
             "*/analyze ברזיל vs ארגנטינה 22:00* - ניתוח משחק ספציפי\n\n"
-            "🤖 כל בוקר בשעה 10:00 תקבל ניתוח אוטומטי\n"
-            "🔄 חצי שעה לפני כל משחק תקבל ניתוח מעודכן עם ההרכבים"
+            "🤖 כל בוקר בשעה 10:00 תקבל ניתוח אוטומטי ל-24 שעות קדימה"
         )
 
     elif text == "/today":
@@ -100,18 +93,6 @@ def handle_command(text, chat_id):
             result = analyze_daily_matches(matches)
             send_message(result)
 
-    elif text.startswith("/lineups "):
-        args = text[9:].strip()
-        if "vs" in args:
-            parts = args.split("vs", 1)
-            team1 = parts[0].strip()
-            rest = parts[1].strip().split()
-            team2 = rest[0] if rest else ""
-            match_time = rest[1] if len(rest) > 1 else "לא צוין"
-            send_message(f"🔄 מנתח עם הרכבים: {team1} נגד {team2}...")
-            result = analyze_match(team1, team2, match_time, with_lineups=True)
-            send_message(result)
-
     elif text.startswith("/analyze "):
         args = text[9:].strip()
         if "vs" in args:
@@ -126,21 +107,15 @@ def handle_command(text, chat_id):
 
 
 def morning_briefing():
-    global todays_matches, lineup_alerts_sent
-    lineup_alerts_sent = set()  # איפוס התראות הרכבים ליום חדש
-
     logger.info("שולח ניתוח בוקר...")
     now = now_il()
     today = now.strftime("%d/%m/%Y")
 
-    # שאל ישירות על חלון 24 השעות הקרובות (כולל משחקי לילה אחרי חצות בשעון ישראל).
-    # שאילתה לפי טווח זמן מונעת בלבול תאריכים של משחקים שמתחילים אחרי חצות.
     window = get_upcoming_matches(24)
     try:
         window.sort(key=parse_match_dt)
     except Exception:
         pass
-    todays_matches = window  # משמש גם להתראות ההרכבים
 
     if not window:
         send_message(
@@ -160,46 +135,6 @@ def morning_briefing():
     logger.info(f"נותחו {len(window)} משחקים בחלון 24 השעות")
 
 
-def check_lineup_alerts():
-    """בדוק אם צריך לשלוח ניתוח מעודכן עם הרכבים (חצי שעה לפני כל משחק)"""
-    global lineup_alerts_sent
-
-    now = now_il()
-
-    for match in todays_matches:
-        match_id = f"{match['team1']}_vs_{match['team2']}"
-
-        if match_id in lineup_alerts_sent:
-            continue
-
-        try:
-            match_time = parse_match_dt(match)
-            time_until = (match_time - now).total_seconds() / 60  # בדקות
-
-            # שלח 30 דקות לפני המשחק
-            if 0 <= time_until <= 35:
-                lineup_alerts_sent.add(match_id)
-                logger.info(f"שולח ניתוח הרכבים: {match_id}")
-
-                send_message(
-                    f"🔄 *ניתוח מעודכן עם הרכבים*\n"
-                    f"⚽ {match['team1']} נגד {match['team2']}\n"
-                    f"🕐 המשחק בעוד ~30 דקות\n\n"
-                    "מחפש הרכבים רשמיים ומנתח..."
-                )
-
-                result = analyze_match(
-                    match['team1'],
-                    match['team2'],
-                    match['time'],
-                    with_lineups=True
-                )
-                send_message(result)
-
-        except Exception as e:
-            logger.error(f"שגיאה בבדיקת הרכבים: {e}")
-
-
 def get_latest_offset():
     updates = get_updates()
     if updates:
@@ -210,13 +145,9 @@ def get_latest_offset():
 def main():
     logger.info("🚀 בוט מונדיאל 2026 מתחיל...")
 
-    # ניתוח בוקר בשעה 10:00 שעון ישראל (07:00 UTC, השרת ב-UTC + ישראל בשעון קיץ = UTC+3)
+    # ניתוח בוקר בשעה 10:00 שעון ישראל (07:00 UTC)
     schedule.every().day.at("07:00").do(morning_briefing)
 
-    # בדיקת הרכבים כל 5 דקות
-    schedule.every(5).minutes.do(check_lineup_alerts)
-
-    # דלג על הודעות ישנות
     offset = get_latest_offset()
     logger.info(f"מתחיל מ-offset: {offset}")
     last_schedule_check = time.time()
