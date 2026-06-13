@@ -93,7 +93,7 @@ def _fetch_matches(prompt: str, default_date: str) -> list:
     try:
         response = client.beta.messages.create(
             model="claude-opus-4-8",
-            max_tokens=800,
+            max_tokens=3000,  # מספיק מקום גם אחרי חיפוש וחישובי המרת שעות, כדי שה-JSON לא ייחתך
             messages=[{"role": "user", "content": prompt}],
             tools=[WEB_SEARCH_TOOL],
             betas=["web-search-2025-03-05"],
@@ -119,6 +119,8 @@ def _fetch_matches(prompt: str, default_date: str) -> list:
                         m["date"] = default_date
                 return matches
 
+    # לא נמצא JSON - לוג לאבחון (חיתוך? תשובה ריקה?)
+    print(f"⚠️ לא נמצא JSON בתשובה. stop_reason={getattr(response, 'stop_reason', '?')}")
     return []
 
 
