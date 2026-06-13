@@ -61,8 +61,9 @@ def handle_command(text, chat_id):
             "פקודות זמינות:\n"
             "*/today* - רשימת + ניתוח משחקי היום\n"
             "*/tomorrow* - רשימת + ניתוח משחקי מחר\n"
-            "*/analyze ברזיל vs ארגנטינה 22:00* - ניתוח מעמיק של משחק בודד\n\n"
-            "💡 לדיוק מקסימלי השתמש ב-/analyze לכל משחק בנפרד"
+            "*/an ברזיל נגד ארגנטינה* - ניתוח מעמיק של משחק בודד\n\n"
+            "💡 לדיוק מקסימלי השתמש ב-/an לכל משחק בנפרד\n"
+            "(אפשר להוסיף שעה בסוף, למשל: /an ברזיל נגד ארגנטינה 22:00)"
         )
 
     elif text == "/today":
@@ -93,17 +94,25 @@ def handle_command(text, chat_id):
             result = analyze_daily_matches(matches)
             send_message(result)
 
-    elif text.startswith("/analyze "):
-        args = text[9:].strip()
-        if "vs" in args:
-            parts = args.split("vs", 1)
-            team1 = parts[0].strip()
-            rest = parts[1].strip().split()
-            team2 = rest[0] if rest else ""
-            match_time = rest[1] if len(rest) > 1 else "לא צוין"
+    elif text.startswith("/an ") or text.startswith("/analyze "):
+        args = text.split(" ", 1)[1].strip()
+        # מפריד: "נגד" (עברית) או "vs" (אנגלית)
+        sep = "נגד" if "נגד" in args else ("vs" if "vs" in args else None)
+        if sep:
+            team1, after = [p.strip() for p in args.split(sep, 1)]
+            tokens = after.split()
+            # אם האסימון האחרון נראה כמו שעה (מכיל ":") - זו השעה
+            if tokens and ":" in tokens[-1]:
+                match_time = tokens[-1]
+                team2 = " ".join(tokens[:-1]).strip()
+            else:
+                match_time = "לא צוין"
+                team2 = " ".join(tokens).strip()
             send_message(f"🔍 מנתח לעומק: {team1} נגד {team2}...")
             result = analyze_match(team1, team2, match_time)
             send_message(result)
+        else:
+            send_message("פורמט: /an ברזיל נגד ארגנטינה (אפשר להוסיף שעה בסוף)")
 
 
 def get_latest_offset():
