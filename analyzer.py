@@ -81,8 +81,15 @@ Y - {team2}
     return result or "לא ניתן היה לנתח את המשחק כרגע."
 
 
+class MatchFetchError(Exception):
+    """נזרק כשקריאת ה-API נכשלת (למשל אין קרדיט) - להבדיל מ'אין משחקים'"""
+    pass
+
+
 def _fetch_matches(prompt: str, default_date: str) -> list:
-    """שולח prompt למודל ומפענח רשימת משחקים בפורמט JSON"""
+    """שולח prompt למודל ומפענח רשימת משחקים בפורמט JSON.
+    מחזיר רשימה (ייתכן ריקה אם באמת אין משחקים).
+    זורק MatchFetchError אם קריאת ה-API עצמה נכשלה."""
     try:
         response = client.beta.messages.create(
             model="claude-opus-4-8",
@@ -91,21 +98,26 @@ def _fetch_matches(prompt: str, default_date: str) -> list:
             tools=[WEB_SEARCH_TOOL],
             betas=["web-search-2025-03-05"],
         )
+    except Exception as e:
+        # שגיאת API אמיתית (קרדיט/רשת/הרשאה) - לא לבלוע בשקט!
+        print(f"❌ שגיאת API בשליפת משחקים: {e}")
+        raise MatchFetchError(str(e))
 
-        import json
-        for block in response.content:
-            if hasattr(block, "text"):
-                text = block.text.strip()
-                if "[" in text:
-                    start = text.index("[")
-                    end = text.rindex("]") + 1
+    import json
+    for block in response.content:
+        if hasattr(block, "text"):
+            text = block.text.strip()
+            if "[" in text:
+                start = text.index("[")
+                end = text.rindex("]") + 1
+                try:
                     matches = json.loads(text[start:end])
-                    for m in matches:
-                        if not m.get("date"):
-                            m["date"] = default_date
-                    return matches
-    except Exception:
-        pass
+                except Exception:
+                    continue
+                for m in matches:
+                    if not m.get("date"):
+                        m["date"] = default_date
+                return matches
 
     return []
 

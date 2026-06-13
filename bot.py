@@ -6,7 +6,7 @@ import logging
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
-from analyzer import analyze_daily_matches, analyze_match, get_todays_matches, get_upcoming_matches
+from analyzer import analyze_daily_matches, analyze_match, get_todays_matches, get_upcoming_matches, MatchFetchError
 
 load_dotenv()
 
@@ -76,7 +76,11 @@ def handle_command(text, chat_id):
     elif text == "/today":
         send_message("🔍 מנתח משחקי היום... זה יקח כדקה")
         today = now_il().strftime("%d/%m/%Y")
-        matches = get_todays_matches(today)
+        try:
+            matches = get_todays_matches(today)
+        except MatchFetchError as e:
+            send_message(f"⚠️ שגיאה בשליפה (אולי נגמר הקרדיט?):\n`{str(e)[:200]}`")
+            return
         if not matches:
             send_message("אין משחקי מונדיאל היום 🏆")
         else:
@@ -86,7 +90,11 @@ def handle_command(text, chat_id):
     elif text == "/tomorrow":
         send_message("🔍 מנתח משחקי מחר...")
         tomorrow = (now_il() + timedelta(days=1)).strftime("%d/%m/%Y")
-        matches = get_todays_matches(tomorrow)
+        try:
+            matches = get_todays_matches(tomorrow)
+        except MatchFetchError as e:
+            send_message(f"⚠️ שגיאה בשליפה (אולי נגמר הקרדיט?):\n`{str(e)[:200]}`")
+            return
         if not matches:
             send_message("אין משחקי מונדיאל מחר 🏆")
         else:
@@ -111,7 +119,18 @@ def morning_briefing():
     now = now_il()
     today = now.strftime("%d/%m/%Y")
 
-    window = get_upcoming_matches(24)
+    try:
+        window = get_upcoming_matches(24)
+    except MatchFetchError as e:
+        logger.error(f"שגיאת API בניתוח בוקר: {e}")
+        send_message(
+            f"⚠️ *שגיאה בשליפת המשחקים*\n📅 {today}\n\n"
+            "ייתכן שנגמר הקרדיט ב-Anthropic או תקלת רשת זמנית. "
+            "בדוק את היתרה ונסה שוב עם /today.\n\n"
+            f"`{str(e)[:200]}`"
+        )
+        return
+
     try:
         window.sort(key=parse_match_dt)
     except Exception:
