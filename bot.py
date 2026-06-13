@@ -1,12 +1,11 @@
 import os
 import time
 import requests
-import schedule
 import logging
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
-from analyzer import analyze_daily_matches, analyze_match, get_todays_matches, get_upcoming_matches, MatchFetchError
+from analyzer import analyze_daily_matches, analyze_match, get_todays_matches, MatchFetchError
 
 load_dotenv()
 
@@ -15,13 +14,6 @@ IL_TZ = ZoneInfo("Asia/Jerusalem")
 
 def now_il():
     return datetime.now(IL_TZ)
-
-
-def parse_match_dt(match):
-    match_date = match.get('date') or now_il().strftime("%d/%m/%Y")
-    return datetime.strptime(
-        f"{match_date} {match['time']}", "%d/%m/%Y %H:%M"
-    ).replace(tzinfo=IL_TZ)
 
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
@@ -67,10 +59,10 @@ def handle_command(text, chat_id):
         send_message(
             "🏆 *בוט הימורי מונדיאל 2026 מוכן!*\n\n"
             "פקודות זמינות:\n"
-            "*/today* - ניתוח משחקי היום\n"
-            "*/tomorrow* - ניתוח משחקי מחר\n"
-            "*/analyze ברזיל vs ארגנטינה 22:00* - ניתוח משחק ספציפי\n\n"
-            "🤖 כל בוקר בשעה 10:00 תקבל ניתוח אוטומטי ל-24 שעות קדימה"
+            "*/today* - רשימת + ניתוח משחקי היום\n"
+            "*/tomorrow* - רשימת + ניתוח משחקי מחר\n"
+            "*/analyze ברזיל vs ארגנטינה 22:00* - ניתוח מעמיק של משחק בודד\n\n"
+            "💡 לדיוק מקסימלי השתמש ב-/analyze לכל משחק בנפרד"
         )
 
     elif text == "/today":
@@ -109,49 +101,9 @@ def handle_command(text, chat_id):
             rest = parts[1].strip().split()
             team2 = rest[0] if rest else ""
             match_time = rest[1] if len(rest) > 1 else "לא צוין"
-            send_message(f"🔍 מנתח: {team1} נגד {team2}...")
+            send_message(f"🔍 מנתח לעומק: {team1} נגד {team2}...")
             result = analyze_match(team1, team2, match_time)
             send_message(result)
-
-
-def morning_briefing():
-    logger.info("שולח ניתוח בוקר...")
-    now = now_il()
-    today = now.strftime("%d/%m/%Y")
-
-    try:
-        window = get_upcoming_matches(24)
-    except MatchFetchError as e:
-        logger.error(f"שגיאת API בניתוח בוקר: {e}")
-        send_message(
-            f"⚠️ *שגיאה בשליפת המשחקים*\n📅 {today}\n\n"
-            "ייתכן שנגמר הקרדיט ב-Anthropic או תקלת רשת זמנית. "
-            "בדוק את היתרה ונסה שוב עם /today.\n\n"
-            f"`{str(e)[:200]}`"
-        )
-        return
-
-    try:
-        window.sort(key=parse_match_dt)
-    except Exception:
-        pass
-
-    if not window:
-        send_message(
-            f"☀️ *בוקר טוב!*\n📅 {today}\n\n"
-            "אין משחקי מונדיאל ב-24 השעות הקרובות. נתראה במשחק הבא! 🏆"
-        )
-        logger.info("אין משחקים בחלון 24 השעות")
-        return
-
-    send_message(
-        f"☀️ *בוקר טוב! ניתוח מונדיאל יומי*\n"
-        f"📅 {today}\n\n"
-        f"מנתח {len(window)} משחקים (היום + הלילה)..."
-    )
-    result = analyze_daily_matches(window)
-    send_message(result)
-    logger.info(f"נותחו {len(window)} משחקים בחלון 24 השעות")
 
 
 def get_latest_offset():
@@ -162,14 +114,10 @@ def get_latest_offset():
 
 
 def main():
-    logger.info("🚀 בוט מונדיאל 2026 מתחיל...")
-
-    # ניתוח בוקר בשעה 10:00 שעון ישראל (07:00 UTC)
-    schedule.every().day.at("07:00").do(morning_briefing)
+    logger.info("🚀 בוט מונדיאל 2026 מתחיל (מצב ידני בלבד)...")
 
     offset = get_latest_offset()
     logger.info(f"מתחיל מ-offset: {offset}")
-    last_schedule_check = time.time()
 
     while True:
         updates = get_updates(offset)
@@ -181,10 +129,6 @@ def main():
             if text and chat_id:
                 logger.info(f"פקודה: {text}")
                 handle_command(text, chat_id)
-
-        if time.time() - last_schedule_check >= 60:
-            schedule.run_pending()
-            last_schedule_check = time.time()
 
         time.sleep(2)
 
